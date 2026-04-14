@@ -1,7 +1,7 @@
 // Block-based implementation approach (rocksdb-like).
 // We write to a 32kiB buffer, and when the end is reached, we flush the writes to disk
 
-use std::{fs::File, hash::Hasher, path::PathBuf};
+use std::{fs::File, hash::Hasher, io::Write, path::PathBuf};
 
 const BUF_SIZE: usize = 32768; // 32KiB
 const HEADER_SIZE: usize = 7; // CRC(4) + Length(2) + Type(1)
@@ -63,7 +63,13 @@ impl Writer {
 
     fn write_record(&mut self, record: &[u8]) {}
 
-    fn flush_buffer(&mut self) {}
+    fn flush_buffer(&mut self) {
+        if self.buf_pos == 0 {
+            return;
+        }
+
+        self.file.write_all(&self.buf[0..self.buf_pos]);
+    }
 }
 
 struct Reader {
