@@ -3,12 +3,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
-pub enum WalError {
-    #[error("WAL write error: {0}")]
-    Write(#[from] std::io::Error),
-
-    #[error("record too large: {size} bytes, max {max} bytes")]
-    RecordTooLarge { size: usize, max: usize },
+pub enum Error {
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
 }
 
 // #[derive(Debug)]

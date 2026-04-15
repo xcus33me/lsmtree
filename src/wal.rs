@@ -1,7 +1,7 @@
 // Block-based implementation approach (rocksdb-like).
 // We write to a 32kiB buffer, and when the end is reached, we flush the writes to disk
 
-use std::{fs::File, hash::Hasher, io::Write, path::PathBuf};
+use std::{fs::File, io::Write, path::PathBuf};
 
 const BUF_SIZE: usize = 32768; // 32KiB
 const HEADER_SIZE: usize = 7; // CRC(4) + Length(2) + Type(1)
@@ -61,14 +61,61 @@ impl Writer {
         self.buf_pos += record.len();
     }
 
-    fn write_record(&mut self, record: &[u8]) {}
+    fn write_record(&mut self, record: &[u8]) -> Result<(), crate::Error> {
+        let mut offset = 0;
+        let mut first = true;
 
-    fn flush_buffer(&mut self) {
-        if self.buf_pos == 0 {
-            return;
+        loop {
+            let remaining = BUF_SIZE - self.buf_pos;
+
+            // if the remaining space in the block is not enough even for the header - fill it with zeroes.
+            if remaining < HEADER_SIZE {
+                self.buf[self.buf_pos..BUF_SIZE].fill(0);
+                self.buf_pos = BUF_SIZE;
+                self.flush_buffer()?;
+            }
+
+            let remaining = BUF_SIZE - self.buf_pos; // recalculate after a possible flush
+            let available_data = remaining - HEADER_SIZE;
+            let leftover = record.len() - offset;
+
+            if leftover <= available_data {
+                let record_type = if first {
+                    RecordType::Full
+                } else {
+                    RecordType::Last
+                };
+
+                self.write_fragment(record_type, &record[offset..]);
+                self.is_dirty = true;
+                break;
+            } else {
+                let record_type = if first {
+                    RecordType::First
+                } else {
+                    RecordType::Middle
+                };
+
+                self.write_fragment(record_type, &record[offset..offset + available_data]);
+                self.is_dirty = true;
+                offset += available_data;
+                first = false;
+                self.flush_buffer()?;
+            }
         }
 
-        self.file.write_all(&self.buf[0..self.buf_pos]);
+        Ok(())
+    }
+
+    fn flush_buffer(&mut self) -> Result<(), crate::Error> {
+        if self.buf_pos == 0 {
+            return Ok(());
+        }
+
+        self.file.write_all(&self.buf[0..self.buf_pos])?;
+        self.buf_pos = 0;
+        self.is_dirty = false;
+        Ok(())
     }
 }
 
